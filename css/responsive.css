@@ -3,7 +3,7 @@
    Seção 2.3 e 6: Perfil de uso mobile-first, excelente experiência no celular
    ========================================================================== */
 
-@media (max-width: 1080px) {
+@media (max-width: 1180px) {
   .site-nav {
     position: fixed;
     top: var(--header-height);
@@ -13,6 +13,7 @@
     backdrop-filter: blur(24px);
     -webkit-backdrop-filter: blur(24px);
     border-bottom: 1px solid var(--border-strong);
+    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
     flex-direction: column;
     align-items: stretch;
     padding: 1.25rem;
@@ -36,7 +37,13 @@
     height: auto;
     justify-content: flex-start;
     padding: 0.75rem 1rem;
-    font-size: 0.98rem;
+    font-size: 0.95rem;
+    gap: 0.65rem;
+  }
+
+  .site-nav__link svg {
+    width: 18px;
+    height: 18px;
   }
 
   .site-nav__label {
@@ -50,7 +57,9 @@
   .mobile-menu-btn {
     display: inline-flex;
   }
+}
 
+@media (max-width: 1080px) {
   .hero-mockup-grid,
   .suite-panel.is-active,
   .community-grid {
@@ -81,24 +90,27 @@
     grid-template-columns: 1fr;
   }
 
-  .partner-slots-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
   .steps-timeline,
   .trust-grid,
   .metric-placeholder-grid {
     grid-template-columns: 1fr;
   }
 
-  .site-header__actions .btn--header-cta span.hide-mobile {
-    display: none;
-  }
-
   .antigravity-dock {
-    justify-content: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     width: 100%;
     border-radius: var(--radius-xl);
+    padding: 0.5rem;
+    gap: 0.35rem;
+  }
+
+  .dock-item {
+    font-size: 0.78rem;
+    padding: 0.5rem 0.85rem;
+    white-space: normal;
+    text-align: center;
   }
 
   .footer-grid {
@@ -109,10 +121,50 @@
   .b2b-banner {
     flex-direction: column;
     align-items: flex-start;
+    padding: 1.5rem;
+  }
+
+  .b2b-banner .btn {
+    width: 100%;
+  }
+
+  .suite-container,
+  .community-highlight-box,
+  .pricing-card {
+    padding: 1.5rem 1.25rem;
   }
 }
 
 @media (max-width: 480px) {
+  .site-header__inner {
+    gap: 0.5rem;
+  }
+
+  .brand-logo {
+    font-size: 1.1rem;
+    gap: 0.45rem;
+  }
+
+  .brand-logo__mark {
+    width: 30px;
+    height: 30px;
+  }
+
+  .site-header__actions {
+    gap: 0.4rem;
+  }
+
+  .site-header__actions .btn--header-cta {
+    padding: 0.48rem 0.78rem;
+    font-size: 0.75rem;
+  }
+
+  .theme-toggle,
+  .mobile-menu-btn {
+    width: 36px;
+    height: 36px;
+  }
+
   .hero-ctas {
     width: 100%;
     flex-direction: column;
@@ -126,7 +178,28 @@
     grid-template-columns: 1fr;
   }
 
-  .partner-slots-grid {
-    grid-template-columns: 1fr;
+  .problem-card,
+  .step-card,
+  .audience-card,
+  .trust-card,
+  .roadmap-card,
+  .modal-dialog {
+    padding: 1.35rem 1.15rem;
+  }
+
+  .faq-trigger {
+    padding: 1rem 1.15rem;
+    font-size: 0.95rem;
+  }
+
+  .faq-content__inner {
+    padding: 0 1.15rem 1.15rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .site-header__actions .btn--header-cta {
+    padding: 0.42rem 0.6rem;
+    font-size: 0.7rem;
   }
 }

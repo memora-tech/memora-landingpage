@@ -52,7 +52,6 @@ export function initAnimations() {
     '.pricing-grid',
     '.trust-grid',
     '.partners-cycle',
-    '.partner-slots-grid',
   ];
 
   staggerGroups.forEach((selector) => {

@@ -1,290 +1,406 @@
 /**
  * @file canvas-particles.js
- * @description Campo de Gravidade Zero & Partículas Flutuantes (Inspiração Natural Google Antigravity).
- * - Movimento orgânico, calmo e contínuo (deriva antigravitacional com física de mola amortecida)
- * - Sem linhas "sci-fi" artificiais, sem choques bruscos: apenas micropartículas luminosas com profundidade (DOF)
- * - Interação natural de repulsão/fluxo suave ao redor do cursor e leve parallax 3D
- * - Pausa automática fora da tela (IntersectionObserver) e suporte a prefers-reduced-motion
+ * @description Rede Neural Interativa com Sinapses em Tempo Real (Hero Section).
+ * - Neurônios (soma + núcleo + halo) distribuídos com camadas de profundidade (parallax)
+ * - Conexões dendríticas/axônios dinâmicas entre neurônios próximos
+ * - Sinapses (pulsos de informação luminosos com cauda) transitando entre neurônios
+ *   e gerando propagação em cadeia quando o sinal chega ao neurônio de destino
+ * - Interação com o mouse: movimenta suavemente os neurônios e estimula novas sinapses
+ * - Totalmente responsivo (mobile e desktop), adaptável ao tema claro/escuro e acessível
  */
 
 export function initSynapseCanvas() {
   const canvas = document.getElementById('synapse-canvas');
   if (!canvas) return;
 
-  const heroSection = canvas.parentElement || document.getElementById('hero');
+  const container = canvas.parentElement || document.getElementById('hero');
   const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   let prefersReducedMotion = motionQuery.matches;
 
-  if (typeof window.THREE !== 'undefined') {
-    try {
-      return initAntigravityField3D(canvas, heroSection, () => prefersReducedMotion, motionQuery);
-    } catch (err) {
-      console.warn('Fallback para Canvas 2D Antigravity:', err);
-    }
-  }
-
-  return initAntigravityField2D(canvas, heroSection, () => prefersReducedMotion, motionQuery);
-}
-
-/* ==========================================================================
-   MOTOR PRINCIPAL: THREE.JS — ANTIGRAVITY ORGANIC FLOATING FIELD
-   ========================================================================== */
-function initAntigravityField3D(canvas, container, getReducedMotion, motionQuery) {
-  const THREE = window.THREE;
-
-  const renderer = new THREE.WebGLRenderer({
-    canvas,
-    alpha: true,
-    antialias: true,
-    powerPreference: 'high-performance',
-  });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, 1, 1, 1000);
-  camera.position.z = 340;
-
-  const fieldGroup = new THREE.Group();
-  scene.add(fieldGroup);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
 
   let width = 1;
   let height = 1;
+  let dpr = 1;
   let isVisible = true;
   let animationFrameId = null;
+  let time = 0;
 
-  // Textura circular ultra-suave (bokeh / poeira estelar natural)
-  function createSoftDotTexture() {
-    const c = document.createElement('canvas');
-    c.width = 64;
-    c.height = 64;
-    const ctx = c.getContext('2d');
-    const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-    grad.addColorStop(0.28, 'rgba(255, 255, 255, 0.82)');
-    grad.addColorStop(0.65, 'rgba(255, 255, 255, 0.18)');
-    grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 64, 64);
-    return new THREE.CanvasTexture(c);
-  }
-
-  const dotTexture = createSoftDotTexture();
-  const isMobile = window.innerWidth < 768;
-
-  // Duas camadas de profundidade para sensação real de foco (Foreground + Background)
-  const COUNT_NEAR = isMobile ? 42 : 85;
-  const COUNT_FAR = isMobile ? 65 : 130;
+  let neurons = [];
+  let synapses = [];
 
   const pointer = {
+    x: -9999,
+    y: -9999,
     nx: 0,
     ny: 0,
     targetNx: 0,
     targetNy: 0,
-    worldX: 9999,
-    worldY: 9999,
+    vx: 0,
+    vy: 0,
+    lastX: -9999,
+    lastY: -9999,
     active: false,
   };
 
-  function getPalette() {
-    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+  function getConfig() {
+    const isMobile = width < 768;
+    const isSmallMobile = width < 480;
     return {
-      isLight,
-      brand: new THREE.Color(0x00a1e0),
-      softBlue: new THREE.Color(isLight ? 0x0284c7 : 0x7dd3fc),
-      neutral: new THREE.Color(isLight ? 0x475569 : 0xcbd5e1),
-      muted: new THREE.Color(isLight ? 0x94a3b8 : 0x64748b),
+      count: isSmallMobile ? 34 : isMobile ? 48 : 82,
+      connectDist: isSmallMobile ? 125 : isMobile ? 145 : 175,
+      mouseRadius: isMobile ? 120 : 170,
+      maxSynapses: isSmallMobile ? 14 : isMobile ? 22 : 42,
+      spontaneousRate: isMobile ? 0.08 : 0.16,
     };
   }
 
-  let palette = getPalette();
+  function createNetwork() {
+    const cfg = getConfig();
+    neurons = [];
+    synapses = [];
 
-  function createLayer(count, size, zRange, opacity) {
-    const positions = new Float32Array(count * 3);
-    const colors = new Float32Array(count * 3);
-    const items = [];
+    for (let i = 0; i < cfg.count; i++) {
+      const depth = 0.45 + Math.random() * 0.55; // 0.45 (fundo) a 1.0 (frente)
+      const hx = Math.random() * width;
+      const hy = Math.random() * height;
+      const isPrimary = i % 3 !== 0;
 
-    const spreadX = Math.max(width * 0.48, 320);
-    const spreadY = Math.max(height * 0.42, 220);
-
-    for (let i = 0; i < count; i++) {
-      const homeX = (Math.random() - 0.5) * spreadX * 2;
-      const homeY = (Math.random() - 0.5) * spreadY * 2;
-      const homeZ = (Math.random() - 0.5) * zRange;
-
-      const roll = Math.random();
-      const tone = roll < 0.28 ? 'brand' : roll < 0.52 ? 'softBlue' : roll < 0.8 ? 'neutral' : 'muted';
-
-      items.push({
-        x: homeX,
-        y: homeY,
-        z: homeZ,
-        homeX,
-        homeY,
-        homeZ,
+      neurons.push({
+        id: i,
+        x: hx,
+        y: hy,
+        homeX: hx,
+        homeY: hy,
         vx: 0,
         vy: 0,
-        freqX: 0.18 + Math.random() * 0.25,
-        freqY: 0.15 + Math.random() * 0.22,
-        ampX: 8 + Math.random() * 16,
-        ampY: 10 + Math.random() * 18,
+        depth,
+        radius: (isPrimary ? 2.2 : 1.7) * (0.7 + depth * 0.5),
+        isPrimary,
         phaseX: Math.random() * Math.PI * 2,
         phaseY: Math.random() * Math.PI * 2,
-        driftSpeed: 0.06 + Math.random() * 0.14,
-        tone,
+        freqX: 0.22 + Math.random() * 0.28,
+        freqY: 0.18 + Math.random() * 0.25,
+        ampX: (10 + Math.random() * 18) * depth,
+        ampY: (10 + Math.random() * 18) * depth,
+        excitation: Math.random() * 0.3, // Brilho ao receber/disparar sinapse
+        cooldown: 0,
       });
-
-      const col = palette[tone];
-      colors[i * 3] = col.r;
-      colors[i * 3 + 1] = col.g;
-      colors[i * 3 + 2] = col.b;
     }
 
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    const mat = new THREE.PointsMaterial({
-      size,
-      map: dotTexture,
-      vertexColors: true,
-      transparent: true,
-      opacity,
-      depthWrite: false,
-      blending: palette.isLight ? THREE.NormalBlending : THREE.AdditiveBlending,
-    });
-
-    const mesh = new THREE.Points(geo, mat);
-    fieldGroup.add(mesh);
-
-    return { count, items, positions, colors, geo, mat };
+    // Inicia algumas sinapses ativas imediatamente
+    for (let s = 0; s < Math.min(8, cfg.maxSynapses); s++) {
+      spawnRandomSynapse(cfg);
+    }
   }
 
-  let nearLayer = null;
-  let farLayer = null;
+  function spawnSynapseBetween(fromIndex, toIndex, boost = 1) {
+    const cfg = getConfig();
+    if (synapses.length >= cfg.maxSynapses) return false;
 
-  function initLayers() {
-    if (nearLayer) fieldGroup.remove(nearLayer.mesh);
-    if (farLayer) fieldGroup.remove(farLayer.mesh);
-    nearLayer = createLayer(COUNT_NEAR, isMobile ? 5.2 : 6.2, 140, palette.isLight ? 0.55 : 0.78);
-    farLayer = createLayer(COUNT_FAR, isMobile ? 3.0 : 3.6, 240, palette.isLight ? 0.32 : 0.42);
-  }
-
-  function refreshColors() {
-    palette = getPalette();
-    [nearLayer, farLayer].forEach((layer, idx) => {
-      if (!layer) return;
-      layer.mat.blending = palette.isLight ? THREE.NormalBlending : THREE.AdditiveBlending;
-      layer.mat.opacity = idx === 0 ? (palette.isLight ? 0.55 : 0.78) : palette.isLight ? 0.32 : 0.42;
-      for (let i = 0; i < layer.count; i++) {
-        const col = palette[layer.items[i].tone];
-        layer.colors[i * 3] = col.r;
-        layer.colors[i * 3 + 1] = col.g;
-        layer.colors[i * 3 + 2] = col.b;
+    // Evita duplicar sinapse idêntica no mesmo sentido ao mesmo tempo
+    for (let i = 0; i < synapses.length; i++) {
+      const s = synapses[i];
+      if (s.from === fromIndex && s.to === toIndex && s.progress < 0.45) {
+        return false;
       }
-      layer.geo.attributes.color.needsUpdate = true;
+    }
+
+    const nA = neurons[fromIndex];
+    const nB = neurons[toIndex];
+    if (!nA || !nB) return false;
+
+    const dist = Math.hypot(nB.x - nA.x, nB.y - nA.y);
+    const speed = (140 + Math.random() * 90) / Math.max(dist, 40); // Velocidade proporcional à distância
+
+    nA.excitation = Math.min(1, nA.excitation + 0.55 * boost);
+    nA.cooldown = 0.25;
+
+    synapses.push({
+      from: fromIndex,
+      to: toIndex,
+      progress: 0,
+      speed,
+      intensity: Math.min(1, 0.75 + Math.random() * 0.25),
+      hops: 0,
     });
+    return true;
   }
 
-  let time = 0;
+  function findConnectedNeighbors(index, maxDist) {
+    const nA = neurons[index];
+    const neighbors = [];
+    for (let j = 0; j < neurons.length; j++) {
+      if (j === index) continue;
+      const nB = neurons[j];
+      const d = Math.hypot(nB.x - nA.x, nB.y - nA.y);
+      if (d < maxDist && d > 18) {
+        neighbors.push({ index: j, dist: d });
+      }
+    }
+    return neighbors;
+  }
 
-  function updateLayer(layer, reduced, influenceScale) {
-    if (!layer) return;
-    const spreadY = Math.max(height * 0.44, 230);
+  function spawnRandomSynapse(cfg) {
+    if (!neurons.length || synapses.length >= cfg.maxSynapses) return;
+    const startIdx = Math.floor(Math.random() * neurons.length);
+    const neighbors = findConnectedNeighbors(startIdx, cfg.connectDist);
+    if (neighbors.length > 0) {
+      const target = neighbors[Math.floor(Math.random() * neighbors.length)];
+      spawnSynapseBetween(startIdx, target.index, 0.9);
+    }
+  }
 
-    for (let i = 0; i < layer.count; i++) {
-      const p = layer.items[i];
+  function updatePhysics(dt, cfg, reduced) {
+    time += dt;
+
+    // Parallax suave baseado na posição normalizada do mouse
+    pointer.nx += (pointer.targetNx - pointer.nx) * 0.05;
+    pointer.ny += (pointer.targetNy - pointer.ny) * 0.05;
+
+    for (let i = 0; i < neurons.length; i++) {
+      const n = neurons[i];
 
       if (!reduced) {
-        // Levitação antigravitacional lenta e contínua para cima
-        p.homeY += p.driftSpeed;
-        if (p.homeY > spreadY) {
-          p.homeY = -spreadY;
-          p.y = p.homeY;
-        }
+        const parallaxX = pointer.nx * 18 * n.depth;
+        const parallaxY = pointer.ny * 14 * n.depth;
 
-        // Oscilação harmônica orgânica (como partículas suspensas no ar)
-        const targetX = p.homeX + Math.sin(time * p.freqX + p.phaseX) * p.ampX;
-        const targetY = p.homeY + Math.cos(time * p.freqY + p.phaseY) * p.ampY;
+        const targetX = n.homeX + Math.sin(time * n.freqX + n.phaseX) * n.ampX + parallaxX;
+        const targetY = n.homeY + Math.cos(time * n.freqY + n.phaseY) * n.ampY + parallaxY;
 
-        // Força de mola suave em direção à órbita natural
-        p.vx += (targetX - p.x) * 0.022;
-        p.vy += (targetY - p.y) * 0.022;
+        n.vx += (targetX - n.x) * 0.028;
+        n.vy += (targetY - n.y) * 0.028;
 
-        // Deslocamento fluido e natural ao passar o cursor (efeito campo antigravitacional)
+        // Interação com o cursor: movimenta os neurônios e dispara sinapses
         if (pointer.active) {
-          const dx = p.x - pointer.worldX;
-          const dy = p.y - pointer.worldY;
+          const dx = n.x - pointer.x;
+          const dy = n.y - pointer.y;
           const dist = Math.hypot(dx, dy);
-          const radius = 135 * influenceScale;
 
-          if (dist < radius && dist > 0.1) {
-            const easeForce = Math.pow(1 - dist / radius, 2);
-            p.vx += (dx / dist) * easeForce * 0.65 * influenceScale;
-            p.vy += (dy / dist) * easeForce * 0.65 * influenceScale;
+          if (dist < cfg.mouseRadius && dist > 0.1) {
+            const factor = Math.pow(1 - dist / cfg.mouseRadius, 2);
+            // Movimento fluido acompanhando/abrindo espaço suave ao redor do cursor
+            n.vx += (dx / dist) * factor * 0.55 * n.depth + pointer.vx * 0.025 * factor;
+            n.vy += (dy / dist) * factor * 0.55 * n.depth + pointer.vy * 0.025 * factor;
+
+            // Excita o neurônio próximo ao mouse e estimula sinapses
+            n.excitation = Math.max(n.excitation, factor * 0.85);
+            if (n.cooldown <= 0 && Math.random() < 0.045 * factor) {
+              const neighbors = findConnectedNeighbors(i, cfg.connectDist);
+              if (neighbors.length > 0) {
+                const chosen = neighbors[Math.floor(Math.random() * neighbors.length)];
+                spawnSynapseBetween(i, chosen.index, 1.2);
+              }
+            }
           }
         }
 
-        // Amortecimento viscoso para zero trepidação
-        p.vx *= 0.88;
-        p.vy *= 0.88;
-
-        p.x += p.vx;
-        p.y += p.vy;
+        n.vx *= 0.87;
+        n.vy *= 0.87;
+        n.x += n.vx;
+        n.y += n.vy;
       }
 
-      layer.positions[i * 3] = p.x;
-      layer.positions[i * 3 + 1] = p.y;
-      layer.positions[i * 3 + 2] = p.z;
+      // Decaimento suave da excitação luminosa e cooldown
+      n.excitation = Math.max(0, n.excitation - dt * 1.4);
+      n.cooldown = Math.max(0, n.cooldown - dt);
     }
 
-    layer.geo.attributes.position.needsUpdate = true;
+    pointer.vx *= 0.8;
+    pointer.vy *= 0.8;
+
+    if (reduced) return;
+
+    // Disparo espontâneo de sinapses pela rede
+    if (Math.random() < cfg.spontaneousRate) {
+      spawnRandomSynapse(cfg);
+    }
+
+    // Atualiza sinapses em trânsito e propaga em cadeia ao chegar no neurônio destino
+    for (let i = synapses.length - 1; i >= 0; i--) {
+      const s = synapses[i];
+      s.progress += s.speed * dt;
+
+      if (s.progress >= 1) {
+        const targetNeuron = neurons[s.to];
+        if (targetNeuron) {
+          targetNeuron.excitation = 1.0;
+
+          // Propagação sináptica em cadeia (até 3 saltos)
+          if (s.hops < 3 && Math.random() < 0.62 && synapses.length < cfg.maxSynapses) {
+            const neighbors = findConnectedNeighbors(s.to, cfg.connectDist).filter(
+              (nb) => nb.index !== s.from
+            );
+            if (neighbors.length > 0) {
+              const next = neighbors[Math.floor(Math.random() * neighbors.length)];
+              const spawned = spawnSynapseBetween(s.to, next.index, 0.95);
+              if (spawned && synapses.length > 0) {
+                synapses[synapses.length - 1].hops = s.hops + 1;
+              }
+            }
+          }
+        }
+        synapses.splice(i, 1);
+      }
+    }
   }
 
-  function renderFrame(dt = 0.016) {
-    time += dt;
-    const reduced = getReducedMotion();
+  function renderFrame() {
+    const cfg = getConfig();
+    const reduced = prefersReducedMotion;
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
 
-    if (!reduced) {
-      // Parallax de câmera extremamente sutil e natural
-      pointer.nx += (pointer.targetNx - pointer.nx) * 0.035;
-      pointer.ny += (pointer.targetNy - pointer.ny) * 0.035;
+    updatePhysics(0.016, cfg, reduced);
 
-      fieldGroup.rotation.y = pointer.nx * 0.09;
-      fieldGroup.rotation.x = -pointer.ny * 0.07;
+    ctx.clearRect(0, 0, width, height);
+
+    const brandRgb = '0, 161, 224';
+    const pulseCoreRgb = isLight ? '2, 132, 199' : '186, 230, 253';
+    const neutralRgb = isLight ? '71, 85, 105' : '148, 163, 184';
+
+    // 1. Desenha as conexões (axônios / dendritos) entre neurônios próximos
+    const maxDist = cfg.connectDist;
+    for (let i = 0; i < neurons.length; i++) {
+      const nA = neurons[i];
+      for (let j = i + 1; j < neurons.length; j++) {
+        const nB = neurons[j];
+        const dx = nB.x - nA.x;
+        const dy = nB.y - nA.y;
+
+        // Filtro rápido por bounding box antes de Math.hypot
+        if (Math.abs(dx) > maxDist || Math.abs(dy) > maxDist) continue;
+
+        const dist = Math.hypot(dx, dy);
+        if (dist < maxDist) {
+          const proximity = 1 - dist / maxDist;
+          const boost = (nA.excitation + nB.excitation) * 0.35;
+          const baseAlpha = isLight ? 0.16 : 0.22;
+          const alpha = Math.min(0.65, proximity * baseAlpha + boost * proximity);
+
+          ctx.beginPath();
+          ctx.moveTo(nA.x, nA.y);
+          ctx.lineTo(nB.x, nB.y);
+          ctx.strokeStyle =
+            boost > 0.15
+              ? `rgba(${brandRgb}, ${alpha * 1.25})`
+              : `rgba(${brandRgb}, ${alpha})`;
+          ctx.lineWidth = 0.8 + boost * 0.9;
+          ctx.stroke();
+        }
+      }
     }
 
-    updateLayer(nearLayer, reduced, 1.0);
-    updateLayer(farLayer, reduced, 0.55);
+    // 2. Desenha as sinapses (impulsos luminosos transitando pelas conexões)
+    for (let i = 0; i < synapses.length; i++) {
+      const s = synapses[i];
+      const nA = neurons[s.from];
+      const nB = neurons[s.to];
+      if (!nA || !nB) continue;
 
-    renderer.render(scene, camera);
-  }
+      const dx = nB.x - nA.x;
+      const dy = nB.y - nA.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > cfg.connectDist * 1.25) continue;
 
-  function resize() {
-    const rect = container.getBoundingClientRect();
-    width = Math.max(rect.width, 1);
-    height = Math.max(rect.height, 1);
-    renderer.setSize(width, height, false);
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-    if (!nearLayer) {
-      initLayers();
+      const headX = nA.x + dx * s.progress;
+      const headY = nA.y + dy * s.progress;
+
+      const tailProgress = Math.max(0, s.progress - 0.28);
+      const tailX = nA.x + dx * tailProgress;
+      const tailY = nA.y + dy * tailProgress;
+
+      // Cauda luminosa do impulso sináptico
+      const tailGrad = ctx.createLinearGradient(tailX, tailY, headX, headY);
+      tailGrad.addColorStop(0, `rgba(${brandRgb}, 0)`);
+      tailGrad.addColorStop(0.6, `rgba(${brandRgb}, ${0.55 * s.intensity})`);
+      tailGrad.addColorStop(1, `rgba(${pulseCoreRgb}, ${0.95 * s.intensity})`);
+
+      ctx.beginPath();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(headX, headY);
+      ctx.strokeStyle = tailGrad;
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      // Cabeça da sinapse (partícula de informação brilhante)
+      const glowRadius = 6.5;
+      const headGrad = ctx.createRadialGradient(headX, headY, 0, headX, headY, glowRadius);
+      headGrad.addColorStop(0, isLight ? 'rgba(0, 161, 224, 0.95)' : 'rgba(255, 255, 255, 0.98)');
+      headGrad.addColorStop(0.35, `rgba(${brandRgb}, 0.75)`);
+      headGrad.addColorStop(1, `rgba(${brandRgb}, 0)`);
+
+      ctx.beginPath();
+      ctx.arc(headX, headY, glowRadius, 0, Math.PI * 2);
+      ctx.fillStyle = headGrad;
+      ctx.fill();
     }
-    renderFrame(0);
+
+    // 3. Desenha os neurônios (halo dendrítico + soma + núcleo)
+    for (let i = 0; i < neurons.length; i++) {
+      const n = neurons[i];
+      const exc = n.excitation;
+      const r = n.radius + exc * 1.6;
+
+      // Halo externo suave (expande quando o neurônio dispara ou recebe sinapse)
+      const haloRadius = r * (2.8 + exc * 2.2);
+      const haloAlpha = (isLight ? 0.18 : 0.28) * n.depth + exc * 0.38;
+      const haloGrad = ctx.createRadialGradient(n.x, n.y, r * 0.2, n.x, n.y, haloRadius);
+      haloGrad.addColorStop(0, `rgba(${brandRgb}, ${Math.min(0.75, haloAlpha)})`);
+      haloGrad.addColorStop(1, `rgba(${brandRgb}, 0)`);
+
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, haloRadius, 0, Math.PI * 2);
+      ctx.fillStyle = haloGrad;
+      ctx.fill();
+
+      // Corpo celular (Soma)
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      const somaAlpha = Math.min(1, (isLight ? 0.65 : 0.78) * n.depth + exc * 0.35);
+      ctx.fillStyle =
+        n.isPrimary || exc > 0.2
+          ? `rgba(${brandRgb}, ${somaAlpha})`
+          : `rgba(${neutralRgb}, ${somaAlpha})`;
+      ctx.fill();
+
+      // Núcleo brilhante do neurônio
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, r * 0.48, 0, Math.PI * 2);
+      ctx.fillStyle = isLight
+        ? `rgba(255, 255, 255, ${0.7 + exc * 0.3})`
+        : `rgba(224, 242, 254, ${0.75 + exc * 0.25})`;
+      ctx.fill();
+    }
   }
 
   function animate() {
-    if (!isVisible || getReducedMotion()) {
+    if (!isVisible || prefersReducedMotion) {
       animationFrameId = null;
       return;
     }
-    renderFrame(0.016);
+    renderFrame();
     animationFrameId = requestAnimationFrame(animate);
   }
 
   function startLoop() {
-    if (!animationFrameId && isVisible && !getReducedMotion()) {
+    if (!animationFrameId && isVisible && !prefersReducedMotion) {
       animationFrameId = requestAnimationFrame(animate);
     }
+  }
+
+  function resize() {
+    const rect = container.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    width = Math.max(rect.width, 1);
+    height = Math.max(rect.height, 1);
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    createNetwork();
+    renderFrame();
   }
 
   function onPointerMove(clientX, clientY) {
@@ -295,38 +411,56 @@ function initAntigravityField3D(canvas, container, getReducedMotion, motionQuery
       pointer.targetNy = 0;
       return;
     }
-    const nx = ((clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1;
-    const ny = ((clientY - rect.top) / Math.max(rect.height, 1)) * 2 - 1;
+
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+
+    if (pointer.active && pointer.lastX > -9000) {
+      pointer.vx = x - pointer.lastX;
+      pointer.vy = y - pointer.lastY;
+    }
+
+    pointer.lastX = x;
+    pointer.lastY = y;
+    pointer.x = x;
+    pointer.y = y;
+
+    const nx = (x / Math.max(rect.width, 1)) * 2 - 1;
+    const ny = (y / Math.max(rect.height, 1)) * 2 - 1;
     pointer.targetNx = Math.max(-1, Math.min(1, nx));
     pointer.targetNy = Math.max(-1, Math.min(1, ny));
-
-    const fovRad = (camera.fov * Math.PI) / 180;
-    const viewH = 2 * Math.tan(fovRad / 2) * camera.position.z;
-    const viewW = viewH * camera.aspect;
-
-    pointer.worldX = pointer.targetNx * (viewW * 0.5);
-    pointer.worldY = -pointer.targetNy * (viewH * 0.5);
     pointer.active = true;
   }
 
   window.addEventListener('mousemove', (e) => onPointerMove(e.clientX, e.clientY), { passive: true });
+  window.addEventListener(
+    'touchmove',
+    (e) => {
+      if (e.touches && e.touches[0]) {
+        onPointerMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    },
+    { passive: true }
+  );
   window.addEventListener('mouseleave', () => {
     pointer.active = false;
+    pointer.x = -9999;
+    pointer.y = -9999;
     pointer.targetNx = 0;
     pointer.targetNy = 0;
   });
 
   window.addEventListener('resize', resize);
   window.addEventListener('memora:themechange', () => {
-    refreshColors();
-    renderFrame(0);
+    renderFrame();
   });
 
   motionQuery.addEventListener?.('change', (e) => {
-    if (e.matches) {
+    prefersReducedMotion = e.matches;
+    if (prefersReducedMotion) {
       if (animationFrameId) cancelAnimationFrame(animationFrameId);
       animationFrameId = null;
-      renderFrame(0);
+      renderFrame();
     } else {
       startLoop();
     }
@@ -350,125 +484,6 @@ function initAntigravityField3D(canvas, container, getReducedMotion, motionQuery
 
   resize();
   startLoop();
-
-  return () => {
-    if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    renderer.dispose();
-  };
-}
-
-/* ==========================================================================
-   FALLBACK 2D NATURAL (SEM LINHAS ARTIFICIAIS)
-   ========================================================================== */
-function initAntigravityField2D(canvas, container, getReducedMotion, motionQuery) {
-  const ctx = canvas.getContext('2d');
-  let width = 0;
-  let height = 0;
-  let particles = [];
-  let animationFrameId = null;
-  let time = 0;
-
-  const pointer = { x: -9999, y: -9999, radius: 130 };
-
-  function createParticles() {
-    const count = width < 768 ? 48 : 95;
-    particles = [];
-    for (let i = 0; i < count; i++) {
-      const isBrand = i % 3 === 0;
-      const hx = Math.random() * width;
-      const hy = Math.random() * height;
-      particles.push({
-        x: hx,
-        y: hy,
-        homeX: hx,
-        homeY: hy,
-        vx: 0,
-        vy: 0,
-        size: isBrand ? Math.random() * 2.0 + 1.2 : Math.random() * 1.5 + 0.7,
-        isBrand,
-        alpha: isBrand ? 0.55 : 0.25,
-        phase: Math.random() * Math.PI * 2,
-        drift: 0.12 + Math.random() * 0.2,
-      });
-    }
-  }
-
-  function draw() {
-    time += 0.016;
-    ctx.clearRect(0, 0, width, height);
-    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
-    const neutralRgb = isLight ? '15, 23, 42' : '203, 213, 225';
-    const reduced = getReducedMotion();
-
-    for (let i = 0; i < particles.length; i++) {
-      const p = particles[i];
-      if (!reduced) {
-        p.homeY -= p.drift;
-        if (p.homeY < -10) {
-          p.homeY = height + 10;
-          p.y = p.homeY;
-        }
-        const tx = p.homeX + Math.sin(time * 0.4 + p.phase) * 12;
-        const ty = p.homeY + Math.cos(time * 0.35 + p.phase) * 10;
-
-        p.vx += (tx - p.x) * 0.03;
-        p.vy += (ty - p.y) * 0.03;
-
-        const dx = p.x - pointer.x;
-        const dy = p.y - pointer.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist < pointer.radius && dist > 0.1) {
-          const force = Math.pow(1 - dist / pointer.radius, 2);
-          p.vx += (dx / dist) * force * 0.55;
-          p.vy += (dy / dist) * force * 0.55;
-        }
-
-        p.vx *= 0.88;
-        p.vy *= 0.88;
-        p.x += p.vx;
-        p.y += p.vy;
-      }
-
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-      ctx.fillStyle = p.isBrand ? `rgba(0, 161, 224, ${p.alpha})` : `rgba(${neutralRgb}, ${p.alpha})`;
-      ctx.fill();
-    }
-
-    if (!reduced) {
-      animationFrameId = requestAnimationFrame(draw);
-    }
-  }
-
-  function resize() {
-    const rect = container.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    width = rect.width;
-    height = rect.height;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    createParticles();
-    if (getReducedMotion()) draw();
-  }
-
-  window.addEventListener('resize', resize);
-  window.addEventListener('mousemove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    pointer.x = e.clientX - rect.left;
-    pointer.y = e.clientY - rect.top;
-  });
-  window.addEventListener('mouseleave', () => {
-    pointer.x = -9999;
-    pointer.y = -9999;
-  });
-  window.addEventListener('memora:themechange', () => {
-    if (getReducedMotion()) draw();
-  });
-  motionQuery.addEventListener?.('change', () => draw());
-
-  resize();
-  draw();
 
   return () => {
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
