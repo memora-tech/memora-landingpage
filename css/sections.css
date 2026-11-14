@@ -86,7 +86,7 @@
   justify-content: center;
   gap: 0.9rem;
   flex-wrap: wrap;
-  margin-bottom: 1rem;
+  margin-bottom: clamp(2.25rem, 4.5vw, 3.25rem);
 }
 
 .hero-meta-note {
@@ -538,6 +538,17 @@
   margin-top: 3px;
 }
 
+.fsrs-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  text-align: center;
+}
+
+.fsrs-stats-grid > div {
+  min-width: 0;
+}
+
 /* ==========================================================================
    5.6 COMUNIDADE (SEÇÃO DE DESTAQUE — EFEITO DE REDE)
    ========================================================================== */
@@ -984,7 +995,7 @@
 .footer-monumental {
   margin-top: 2.5rem;
   font-family: var(--font-display);
-  font-size: clamp(4.2rem, 17.5vw, 15.5rem);
+  font-size: clamp(3.2rem, 17.5vw, 15.5rem);
   font-weight: 800;
   letter-spacing: -0.05em;
   line-height: 0.86;

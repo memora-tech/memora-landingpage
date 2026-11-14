@@ -22,7 +22,6 @@ export function initAnimations() {
     .from('.hero-title', { y: 22, opacity: 0 }, 0.08)
     .from('.hero-subtitle', { y: 18, opacity: 0 }, 0.18)
     .from('.hero-ctas', { y: 14, opacity: 0 }, 0.28)
-    .from('.hero-meta-note', { opacity: 0 }, 0.36)
     .from('.hero-showcase', { y: 28, opacity: 0, scale: 0.985, duration: 1.25 }, 0.32);
 
   if (!ScrollTrigger) return;
